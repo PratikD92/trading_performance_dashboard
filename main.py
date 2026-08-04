@@ -14,7 +14,7 @@ st.title("📈 Trading Performance Dashboard")
 
 
 # --- DATA PREPARATION ---
-@st.cache_data
+# @st.cache_data
 def get_data():
     return load_and_clean_data()
 
@@ -24,14 +24,14 @@ df = df_og.copy(deep=True)
 
 # --- TOP METRICS ROW ---
 # --- METRIC CALCULATIONS ---
-initial_cap = 110000.0  # Or df['Capital'].iloc[0]
+initial_cap = df["Capital"].iloc[0] - df["PnL"].iloc[0]  # Or df['Capital'].iloc[0]
 final_cap = df["Capital"].iloc[-1]
 total_pnl = df["PnL"].sum()
 max_loss = abs(df["Entry"] - df["SL"]).mean()
 max_profit = abs(df["Target"] - df["Entry"]).mean()
 
 # Calculate duration in months based on Exit Date range
-start_date = df["Exit Date"].min()
+start_date = df["Entry Date"].min()
 end_date = df["Exit Date"].max()
 duration_days = (end_date - start_date).days
 duration_months = max(1, round(duration_days / 30.44))  # Rough average days per month
@@ -88,7 +88,7 @@ left_col, right_col = st.columns(2)
 with left_col:
     st.subheader("Capital Growth Curve")
     fig_cap = px.line(
-        df, x="Exit Date", y="Capital", custom_data=["Capital", "Return on Cap"]
+        df, x="Entry Date", y="Capital", custom_data=["Capital", "Return on Cap"]
     )
     fig_cap.update_traces(
         hovertemplate="<b>Date:</b> %{x|%Y-%m-%d}<br><b>Capital:</b> ₹%{customdata[0]:,.2f}<br><b>Return:</b> %{customdata[1]:.2f}%<extra></extra>",
@@ -101,10 +101,12 @@ with right_col:
     st.subheader("Monthly Profit / Loss")
     # 1. Group by Month and aggregate both PnL and Return on Cap
     monthly_pnl = (
-        df.groupby(df["Exit Date"].dt.to_period("M").astype(str))
+        df.groupby(df["Entry Date"].dt.to_period("M").astype(str))
         .agg({"PnL": "sum", "Return on Cap": "sum"})  # Sum return % for the month
         .reset_index()
     )
+
+    monthly_pnl["Return on Cap"] = monthly_pnl["Return on Cap"] * 100
 
     # 2. Determine Profit or Loss status for color mapping
     monthly_pnl["Status"] = monthly_pnl["PnL"].apply(
@@ -114,7 +116,7 @@ with right_col:
     # 3. Create Bar Chart with hover_data
     fig_monthly = px.bar(
         monthly_pnl,
-        x="Exit Date",
+        x="Entry Date",
         y="PnL",
         color="Status",
         color_discrete_map={"Profit": "#26a69a", "Loss": "#ef5350"},
@@ -306,7 +308,7 @@ with g_col2:
         fig_decay.add_trace(
             go.Scatter(
                 x=exp_df["Trade_Date_Str"],
-                y=exp_df["Spot-option ratio"],
+                y=(exp_df["Spot-option ratio"] * 100).round(2),
                 name=f"Ratio ({exp})",
                 mode="lines+markers",
                 line=dict(width=2.5, color=colors[idx % len(colors)]),
@@ -364,7 +366,7 @@ fig_pts.add_trace(
     go.Scatter(
         x=df_pts["Trade_Date_Str"],
         y=df_pts["Option pts"],
-        customdata=df_pts["Spot-option ratio"],
+        customdata=df_pts["Spot-option ratio"] * 100,
         name="Option Points",
         mode="lines+markers",
         line=dict(color="#ff9800", width=2.5),
